@@ -117,11 +117,11 @@ async function checkCurrentSong() {
       title: status.information.category.meta.title,
       album: status.information.category.meta.album,
       artist: status.information.category.meta.artist,
-      tags: [],
     }
     // check for tags
     const data = await fetchAlbumData()
-    if (data.album.track[data.key]) _.current.tags = data.album.track[data.key].tags
+    console.log('track,', data.album.track)
+    _.current.tags = data.album.track[data.key].tags
   } else {
     // no need to re-set these values if they havent changed, worthless else atm
     _.current.title = status.information.category.meta.title
@@ -224,12 +224,24 @@ async function fetchAlbumData() {
   const fpObj = path.parse(fp)
   const dataFilePath = path.join(fpObj.dir, util.dataFileName)
   if (fs.existsSync(dataFilePath)) {
-    return {
+    
+    const data = {
       album: JSON.parse(fs.readFileSync(dataFilePath)),
       currentTrack: status.information.category.meta,
       key: `${status.information.category.meta.track_number}:${status.information.category.meta.title}`,
       dataFilePath,
     }
+    const date = new Date()
+    if (!data.album.track[data.key]) {
+      data.album.track[data.key] = {
+        ...util.template.track,
+        createDate: date.toISOString(),
+        updateDate: date.toISOString(),
+        trackNumber: status.information.category.meta.track_number,
+        title: status.information.category.meta.title,
+      }
+    }
+    return data
   }
 
   // build data
