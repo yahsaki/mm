@@ -1,18 +1,104 @@
 const util = require('./lib/util')
 const fs = require('fs')
+const url = require('url')
+const path = require('path')
 
 ;(async () => {
   console.log('test')
   //console.log(fs.statSync(`C:\\Users\\yahsaki\\projects\\mm`))
   //await scanDirectory('')
   //process.exit()
-
+  //console.log('ad', await fetchAlbumData())
+  await saveTags()
+  process.exit()
   await writeSomethingInSongDirectory()
   //await getCurrentSongStatus()
 })()
 
+async function saveTags() {
+  // make sure to lower all provided tags at this point
+  // spaces not allowed in tag names
+  const tags = ['test', 'butt']
+  let data = await fetchAlbumData()
+  console.log('album data', data.album)
+  console.log('current track', data.currentTrack)
+
+  const uniqueTags = []
+  for (let i = 0; i < tags.length; i++) {
+    const tag = tags[i].toLowerCase()
+    console.log('tag', tag)
+    if (!data.album.track[data.key].tags.find(x => x === tag)) uniqueTags.push(tag)
+  }
+  console.log('unighq', uniqueTags)
+  data.album.track[data.key].tags = data.album.track[data.key].tags.concat(uniqueTags)
+  for (let i = 0; i < uniqueTags.length; i++) {
+    data.album.track[data.key].history.tags.push({
+      ...util.template.tagHistory,
+      date: new Date().toISOString(),
+      action: util.tagAction.add,
+      tag: uniqueTags[i],
+    })
+  }
+  console.log('latest album data', JSON.stringify(data.album, ' ', 2))
+}
+
+async function getCurrentTrack() {
+  const status = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/status.json'))
+  const playlist = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/playlist.json'))
+  //console.log('playlist', playlist.children.find(x => x.name === 'Playlist'))
+  const node = playlist.children.find(x => x.name === 'Playlist')
+  let track = node.children.find(x => x.id === `${status.currentplid}`)
+  if (track) {
+    return status.information.category.meta
+  }
+  return
+}
+async function fetchAlbumData() {
+  const status = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/status.json'))
+  const playlist = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/playlist.json'))
+  //console.log('playlist', playlist.children.find(x => x.name === 'Playlist'))
+  const node = playlist.children.find(x => x.name === 'Playlist')
+  let track = node.children.find(x => x.id === `${status.currentplid}`)
+  // this will probably never happen
+  if (!track) { throw Error(`faled to find track '${status.information.category.meta.title}' plid ${status.currentplid} in playlist`) }
+  const fp = decodeURIComponent(track.uri.split('file:///')[1])
+  const fpObj = path.parse(fp)
+  const dfp = path.join(fpObj.dir, util.dataFileName)
+  if (fs.existsSync(dfp)) {
+    return JSON.parse(fs.readFileSync(dfp))
+  }
+
+  console.log('dir', fpObj.dir)
+  // build data
+  //const tracks = await util.getTracks(fpObj.dir)
+  const date = new Date()
+  const data = {
+    album: {
+      ...util.template.base,
+      createDate: date.toISOString(),
+      updateDate: date.toISOString(),
+    },
+    currentTrack: status.information.category.meta,
+    key: `${status.information.category.meta.track_number}:${status.information.category.meta.title}`,
+  }
+  data.album.track[data.key] = {
+    ...util.template.track,
+    createDate: date.toISOString(),
+    updateDate: date.toISOString(),
+    trackNumber: status.information.category.meta.track_number,
+    title: status.information.category.meta.title,
+  }
+  return data
+}
+
 async function writeSomethingInSongDirectory() {
   const status = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/status.json'))
+  const playlist = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/playlist.json'))
+  //console.log('playlist', playlist.children.find(x => x.name === 'Playlist'))
+  const node = playlist.children.find(x => x.name === 'Playlist')
+  let song = node.children.find(x => x.id === `${status.currentplid}`)
+  if (!song) { throw Error('faled to find song') }
+  console.log('found song', song)
 }
 
 // I dont want to use klaw anymore for some reason, so lets implement our own

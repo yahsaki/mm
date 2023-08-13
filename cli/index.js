@@ -1,20 +1,36 @@
-
+const path = require('path')
+const fs = require('fs')
 const util = require('./lib/util')
 const readline = require('node:readline')
+const Logger = require('./lib/Logger')
 readline.emitKeypressEvents(process.stdin)
 if (process.stdin.isTTY) { process.stdin.setRawMode(true) }
+const _ = {
+  mode: null,
+  currentTitle: null,
+  current: { title: null, album: null, artist: null },
+}
+const logger = new Logger()
 const input = []
-let mode
 const modes = { tag: 'tag' }
 process.stdin.on('keypress', (str, key) => {
-  if (key.name === 'c' && key.ctrl) process.exit(0)
-  if (!mode) {
+  if (key.name === 'c' && key.ctrl) {
+    log(`*** process stopped ***`, true)
+    process.exit(0)
+  }
+  if (!_.mode) {
     if (key.name === 'escape') process.exit(0)
-    if (key.name === 't' || key.name === '1') { mode = modes.tag;clear();updateView();return; }
+    if (key.name === 't' || key.name === '1') {
+      log(`switched from mode '${_.mode}' to '${modes.tag}'`, true)
+      _.mode = modes.tag;clear();updateView();return;
+    }
   } else {
-    if (key.name === 'escape') {mode=null;clear();updateView();return;}
+    if (key.name === 'escape') {
+      log(`switched from mode '${_.mode}' to... none I guess`, true)
+      _.mode=null;clear();updateView();return;
+    }
     if (key.name === 'return') {
-      log(`adding tags here now: '${input.join('')}'`)
+      log(`adding tags here now: '${input.join('')}'`, true)
       clear()
       return
     }
@@ -42,9 +58,9 @@ let intervalId = setInterval(async () => {
   await checkCurrentSong()
   updateView()
 }, intervalTime)
-const current = { title: null, album: null, artist: null }
 
 ;(async () => {
+  // TODO: initialize log file here
   await checkCurrentSong()
   updateView()
 })()
@@ -53,7 +69,7 @@ function updateView() {
   // drawing a serious blank on a cleaner way to take the first 5 elements of an array
   const arr = []
   // only take first 5 elements of log array
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     if (logs[i]) arr.push(logs[i])
   }
   const logText = `logs: \n${arr.join('\n')}`
@@ -74,9 +90,9 @@ options:
     } break
   }
   print(`
-album: ${current.album}
-title: ${current.title}
-artist: ${current.artist}
+album: ${_.current.album}
+title: ${_.current.title}
+artist: ${_.current.artist}
 ${modeText}
 ${logText}
   `)
@@ -84,9 +100,22 @@ ${logText}
 async function checkCurrentSong() {
   const status = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/status.json'))
   //if (currentSong.title !== songTitle) {}
-  current.title = status.information.category.meta.title
-  current.album = status.information.category.meta.album
-  current.artist = status.information.category.meta.artist
+  if (_.currentTitle !== status.information.category.meta.title) {
+    log(`song changed from '${_.currentTitle}' to '${status.information.category.meta.title}'`, true)
+    _.currentTitle = status.information.category.meta.title
+    _.current = {
+      title: status.information.category.meta.title,
+      album: status.information.category.meta.album,
+      artist: status.information.category.meta.artist,
+    }
+    // check for tags
+    const data = await fetchAlbumData()
+    
+  } else {
+    _.current.title = status.information.category.meta.title
+    _.current.album = status.information.category.meta.album
+    _.current.artist = status.information.category.meta.artist
+  }
 }
 
 function print(message) {
@@ -98,6 +127,27 @@ function print(message) {
 function clear() {
   input.length = 0
 }
-function log(text) {
-  logs.splice(0, 0, text)
+function log(text, debug = false) {
+  if (!debug) logs.splice(0, 0, text)
+  // TODO: write to log file, cant take this shit no mo
+  logger.log(text)
+}
+async function fetchAlbumData() {
+  const status = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/status.json'))
+  const playlist = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/playlist.json'))
+  //console.log('playlist', playlist.children.find(x => x.name === 'Playlist'))
+  const node = playlist.children.find(x => x.name === 'Playlist')
+  let song = node.children.find(x => x.id === `${status.currentplid}`)
+  // this will probably never happen
+  if (!song) { throw Error(`faled to find song '${status.information.category.meta.title}' plid ${status.currentplid} in playlist`) }
+  const fp = decodeURIComponent(song.uri.split('file:///')[1])
+  const fpObj = path.parse(fp)
+  const dfp = path.join(fpObj.dir, util.dataFileName)
+  if (fs.existsSync(dfp)) {
+    return JSON.parse(fs.readFileSync(dfp))
+  }
+  return
+}
+function addTags(tags) {
+  
 }

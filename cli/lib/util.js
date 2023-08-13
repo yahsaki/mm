@@ -3,22 +3,47 @@ const klaw = require('klaw')
 const path = require('path')
 
 module.exports = {
+  dataFileName: '.mm_test_data',
   template: {
-    rating: -1,
-    version: '0.0.0',
-    tags: [],
-    history: {
-      tags: [],
-      rating: [],
+    base: {
+      version: '0.0.0',
+      createDate: null,
+      updateDate: null,
+      track: {},
     },
+    track: {
+      updateDate: null,
+      trackNumber: null,
+      title: '',
+      rating: null,
+      tags: [],
+      history: {
+        tags: [],
+        rating: [],
+      },
+    },
+    tagHistory: {
+      date: null,
+      action: null,
+      tag: null,
+    }
   },
-  scanDir: (dir) => {
-    klaw(dir)
-    .on('data', item => {
-      const thing = path.parse(item.path)
-      console.log(thing)
-      // just realized I dont need to scan directory initially...
-      process.exit()
+  tagAction: {add:'add',remove:'remove'},
+  getTracks: (dir) => {
+    // the way we are using it wont work if album stuffs tracks in folders(IE cd1, cd2, etc)
+    const types = ['.ogg','.mp3','.flac','.wav']
+    const data = []
+    return new Promise((resolve, reject) => {
+      klaw(dir)
+      .on('data', item => {
+        const thing = path.parse(item.path)
+        console.log(thing)
+        if (thing.ext.length && types.find(x => x === thing.ext.toLowerCase())) {
+
+          process.exit()
+        }
+      })
+      .on('end', () => { resolve(data) })
     })
   },
   // doesnt support whitespaces in quotes unfortunately
