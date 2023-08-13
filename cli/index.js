@@ -22,6 +22,7 @@ process.stdin.on('keypress', (str, key) => {
     if (key.name === 'escape') process.exit(0)
     if (key.name === 't' || key.name === '1') {
       log(`switched from mode '${_.mode}' to '${modes.tag}'`, true)
+      logs.splice(0, 0, 'no spaces in tags please')
       _.mode = modes.tag;clear();updateView();return;
     }
   } else {
@@ -30,7 +31,15 @@ process.stdin.on('keypress', (str, key) => {
       _.mode=null;clear();updateView();return;
     }
     if (key.name === 'return') {
-      log(`adding tags here now: '${input.join('')}'`, true)
+      let s = input.join('')
+      if (s.startsWith('rm ')) {
+        s = s.split('rm ')[1]
+        log(`removing tags '${s}'`)
+        removeTags(s.split(' '))
+      } else {
+        log(`adding tags '${s}'`)
+        addTags(s.split(' '))
+      }
       clear()
       return
     }
@@ -75,7 +84,7 @@ function updateView() {
   const logText = `logs: \n${arr.join('\n')}`
   // change text for mode
   let modeText = ''
-  switch(mode) {
+  switch(_.mode) {
     case modes.tag: {
       modeText = `
 mode: CRUD tags
@@ -93,6 +102,7 @@ options:
 album: ${_.current.album}
 title: ${_.current.title}
 artist: ${_.current.artist}
+tags: ${_.current.tags.join(', ')}
 ${modeText}
 ${logText}
   `)
@@ -110,8 +120,9 @@ async function checkCurrentSong() {
     }
     // check for tags
     const data = await fetchAlbumData()
-    
+    _.current.tags = data.album.track[data.key].tags
   } else {
+    // no need to re-set these values if they havent changed, worthless else atm
     _.current.title = status.information.category.meta.title
     _.current.album = status.information.category.meta.album
     _.current.artist = status.information.category.meta.artist
@@ -132,22 +143,112 @@ function log(text, debug = false) {
   // TODO: write to log file, cant take this shit no mo
   logger.log(text)
 }
+async function removeTags(tags) {
+  const data = await fetchAlbumData()
+  const date = new Date()
+
+  const existingTags = []
+  for (let i = 0; i < tags.length; i++) {
+    const tag = tags[i].toLowerCase()
+    const index = data.album.track[data.key].tags.findIndex(x => x === tag)
+    if (index > -1) {
+      data.album.track[data.key].tags.splice(index, 1)
+      existingTags.push(tag)
+    }
+  }
+  if (!existingTags.length) {
+    log('nothing to modify');return;
+  }
+  log(`tags '${existingTags.join(', ')}' will be removed`, true)
+  for (let i = 0; i < existingTags.length; i++) {
+    data.album.track[data.key].history.tags.splice(0, 0, {
+      ...util.template.tagHistory,
+      date: new Date().toISOString(),
+      action: util.tagAction.remove,
+      tag: existingTags[i],
+    })
+  }
+  data.album.updateDate = date.toISOString()
+  data.album.track[data.key].updateDate = date.toISOString()
+  // update current view's tags
+  _.current.tags = data.album.track[data.key].tags
+
+  log(`data file updated at '${data.dataFilePath}'`, true)
+  fs.writeFileSync(data.dataFilePath, JSON.stringify(data.album,' ',2),{encoding:'utf-8'})
+  updateView()
+}
+
+async function addTags(tags) {
+  // spaces not allowed in tag names
+  const data = await fetchAlbumData()
+  const date = new Date()
+
+  const uniqueTags = []
+  for (let i = 0; i < tags.length; i++) {
+    const tag = tags[i].toLowerCase()
+    if (!data.album.track[data.key].tags.find(x => x === tag)) uniqueTags.push(tag)
+  }
+  if (!uniqueTags.length) {
+    log('nothing to modify');return;
+  }
+  log(`tags '${uniqueTags.join(', ')}' will be added`, true)
+  data.album.track[data.key].tags = data.album.track[data.key].tags.concat(uniqueTags)
+  for (let i = 0; i < uniqueTags.length; i++) {
+    data.album.track[data.key].history.tags.splice(0, 0, {
+      ...util.template.tagHistory,
+      date: date.toISOString(),
+      action: util.tagAction.add,
+      tag: uniqueTags[i],
+    })
+  }
+  data.album.updateDate = date.toISOString()
+  data.album.track[data.key].updateDate = date.toISOString()
+  // update current view's tags
+  _.current.tags = data.album.track[data.key].tags
+
+  log(`data file updated at '${data.dataFilePath}'`, true)
+  fs.writeFileSync(data.dataFilePath, JSON.stringify(data.album,' ',2),{encoding:'utf-8'})
+  updateView()
+}
 async function fetchAlbumData() {
   const status = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/status.json'))
   const playlist = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/playlist.json'))
   //console.log('playlist', playlist.children.find(x => x.name === 'Playlist'))
   const node = playlist.children.find(x => x.name === 'Playlist')
-  let song = node.children.find(x => x.id === `${status.currentplid}`)
+  let track = node.children.find(x => x.id === `${status.currentplid}`)
   // this will probably never happen
-  if (!song) { throw Error(`faled to find song '${status.information.category.meta.title}' plid ${status.currentplid} in playlist`) }
-  const fp = decodeURIComponent(song.uri.split('file:///')[1])
+  if (!track) { throw Error(`faled to find track '${status.information.category.meta.title}' plid ${status.currentplid} in playlist`) }
+  const fp = decodeURIComponent(track.uri.split('file:///')[1])
   const fpObj = path.parse(fp)
-  const dfp = path.join(fpObj.dir, util.dataFileName)
-  if (fs.existsSync(dfp)) {
-    return JSON.parse(fs.readFileSync(dfp))
+  const dataFilePath = path.join(fpObj.dir, util.dataFileName)
+  if (fs.existsSync(dataFilePath)) {
+    return {
+      album: JSON.parse(fs.readFileSync(dataFilePath)),
+      currentTrack: status.information.category.meta,
+      key: `${status.information.category.meta.track_number}:${status.information.category.meta.title}`,
+      dataFilePath,
+    }
   }
-  return
-}
-function addTags(tags) {
-  
+
+  // build data
+  //const tracks = await util.getTracks(fpObj.dir)
+  const date = new Date()
+  const data = {
+    album: {
+      ...util.template.base,
+      createDate: date.toISOString(),
+      updateDate: date.toISOString(),
+    },
+    currentTrack: status.information.category.meta,
+    key: `${status.information.category.meta.track_number}:${status.information.category.meta.title}`,
+    dataFilePath,
+  }
+  data.album.track[data.key] = {
+    ...util.template.track,
+    createDate: date.toISOString(),
+    updateDate: date.toISOString(),
+    trackNumber: status.information.category.meta.track_number,
+    title: status.information.category.meta.title,
+  }
+  return data
 }

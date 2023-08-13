@@ -9,11 +9,44 @@ const path = require('path')
   //await scanDirectory('')
   //process.exit()
   //console.log('ad', await fetchAlbumData())
-  await saveTags()
+  //await saveTags()
+  await removeTags()
   process.exit()
   await writeSomethingInSongDirectory()
   //await getCurrentSongStatus()
 })()
+
+async function removeTags() {
+  const tags = ['does_not_exist', 'BUTT']
+  let data = await fetchAlbumData()
+  const date = new Date()
+
+  const existingTags = []
+  for (let i = 0; i < tags.length; i++) {
+    const tag = tags[i].toLowerCase()
+    const index = data.album.track[data.key].tags.findIndex(x => x === tag)
+    if (index > -1) {
+      data.album.track[data.key].tags.splice(index, 1)
+      existingTags.push(tag)
+    }
+  }
+  if (!existingTags.length) {
+    console.log('nothing to modify');return;
+  }
+
+  for (let i = 0; i < existingTags.length; i++) {
+    data.album.track[data.key].history.tags.splice(0, 0, {
+      ...util.template.tagHistory,
+      date: new Date().toISOString(),
+      action: util.tagAction.remove,
+      tag: existingTags[i],
+    })
+  }
+  data.album.updateDate = date.toISOString()
+  data.album.track[data.key].updateDate = date.toISOString()
+  console.log('latest album data', JSON.stringify(data.album, ' ', 2))
+  fs.writeFileSync(data.dataFilePath, JSON.stringify(data.album,' ',2),{encoding:'utf-8'})
+}
 
 async function saveTags() {
   // make sure to lower all provided tags at this point
@@ -29,17 +62,23 @@ async function saveTags() {
     console.log('tag', tag)
     if (!data.album.track[data.key].tags.find(x => x === tag)) uniqueTags.push(tag)
   }
+  if (!uniqueTags.length) {
+    console.log('nothing to modify');return;
+  }
   console.log('unighq', uniqueTags)
   data.album.track[data.key].tags = data.album.track[data.key].tags.concat(uniqueTags)
   for (let i = 0; i < uniqueTags.length; i++) {
-    data.album.track[data.key].history.tags.push({
+    data.album.track[data.key].history.tags.splice(0, 0, {
       ...util.template.tagHistory,
       date: new Date().toISOString(),
       action: util.tagAction.add,
       tag: uniqueTags[i],
     })
   }
+  data.album.updateDate = date.toISOString()
+  data.album.track[data.key].updateDate = date.toISOString()
   console.log('latest album data', JSON.stringify(data.album, ' ', 2))
+  fs.writeFileSync(data.dataFilePath, JSON.stringify(data.album,' ',2),{encoding:'utf-8'})
 }
 
 async function getCurrentTrack() {
@@ -63,12 +102,18 @@ async function fetchAlbumData() {
   if (!track) { throw Error(`faled to find track '${status.information.category.meta.title}' plid ${status.currentplid} in playlist`) }
   const fp = decodeURIComponent(track.uri.split('file:///')[1])
   const fpObj = path.parse(fp)
-  const dfp = path.join(fpObj.dir, util.dataFileName)
-  if (fs.existsSync(dfp)) {
-    return JSON.parse(fs.readFileSync(dfp))
+  const dataFilePath = path.join(fpObj.dir, util.dataFileName)
+  if (fs.existsSync(dataFilePath)) {
+    console.log('file exists', dataFilePath)
+    return {
+      album: JSON.parse(fs.readFileSync(dataFilePath)),
+      currentTrack: status.information.category.meta,
+      key: `${status.information.category.meta.track_number}:${status.information.category.meta.title}`,
+      dataFilePath,
+    }
   }
 
-  console.log('dir', fpObj.dir)
+  console.log('data file does not eixst', fpObj.dir)
   // build data
   //const tracks = await util.getTracks(fpObj.dir)
   const date = new Date()
@@ -80,6 +125,7 @@ async function fetchAlbumData() {
     },
     currentTrack: status.information.category.meta,
     key: `${status.information.category.meta.track_number}:${status.information.category.meta.title}`,
+    dataFilePath,
   }
   data.album.track[data.key] = {
     ...util.template.track,
