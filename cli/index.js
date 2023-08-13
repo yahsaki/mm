@@ -117,10 +117,11 @@ async function checkCurrentSong() {
       title: status.information.category.meta.title,
       album: status.information.category.meta.album,
       artist: status.information.category.meta.artist,
+      tags: [],
     }
     // check for tags
     const data = await fetchAlbumData()
-    _.current.tags = data.album.track[data.key].tags
+    if (data.album.track[data.key]) _.current.tags = data.album.track[data.key].tags
   } else {
     // no need to re-set these values if they havent changed, worthless else atm
     _.current.title = status.information.category.meta.title
@@ -211,8 +212,9 @@ async function addTags(tags) {
   updateView()
 }
 async function fetchAlbumData() {
+  // will probably need retry support onn statys.json at some poinnt(whao misspelling, I swear its this keyb)
   const status = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/status.json'))
-  const playlist = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/playlist.json'))
+  const playlist = await fetchPlaylist()
   //console.log('playlist', playlist.children.find(x => x.name === 'Playlist'))
   const node = playlist.children.find(x => x.name === 'Playlist')
   let track = node.children.find(x => x.id === `${status.currentplid}`)
@@ -251,4 +253,21 @@ async function fetchAlbumData() {
     title: status.information.category.meta.title,
   }
   return data
+}
+
+const maxRetries = 5
+async function fetchPlaylist(retries = 0, backoff = 0) {
+  let playlist
+  try {
+    playlist = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/playlist.json'))
+  } catch(err) {
+    if (retries < maxRetries) {
+      await util.delay(backoff*1000)
+      return fetchPlaylist(retries+1,backoff+1)
+    } else {
+      console.error(`failed to fetch playlist in a decent amount of time, sheesh`)
+      process.exit()
+    }
+  }
+  return playlist
 }

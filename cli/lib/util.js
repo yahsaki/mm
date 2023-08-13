@@ -3,7 +3,7 @@ const klaw = require('klaw')
 const path = require('path')
 
 module.exports = {
-  dataFileName: '.mm_test_data',
+  dataFileName: '.mm_data',
   template: {
     base: {
       version: '0.0.0',
@@ -29,6 +29,9 @@ module.exports = {
     }
   },
   tagAction: {add:'add',remove:'remove'},
+  delay: ms =>
+  new Promise(resolve =>
+    setTimeout(() => resolve(), ms)),
   getTracks: (dir) => {
     // the way we are using it wont work if album stuffs tracks in folders(IE cd1, cd2, etc)
     const types = ['.ogg','.mp3','.flac','.wav']
