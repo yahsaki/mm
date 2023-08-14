@@ -34,10 +34,10 @@ process.stdin.on('keypress', (str, key) => {
       let s = input.join('')
       if (s.startsWith('rm ')) {
         s = s.split('rm ')[1]
-        log(`removing tags '${s}'`)
+        log(`removing tags '${s}' from track '${_.current.album}' album '${_.current.title}'`)
         removeTags(s.split(' '))
       } else {
-        log(`adding tags '${s}'`)
+        log(`adding tags '${s}' to track '${_.current.album}' album '${_.current.title}'`)
         addTags(s.split(' '))
       }
       clear()
@@ -117,6 +117,7 @@ async function checkCurrentSong() {
       title: status.information.category.meta.title,
       album: status.information.category.meta.album,
       artist: status.information.category.meta.artist,
+      tags: [],
     }
     // check for tags
     const data = await fetchAlbumData()
@@ -267,14 +268,24 @@ async function fetchAlbumData() {
   return data
 }
 
-const maxRetries = 5
+const maxRetries = 500
+let failureNotified
 async function fetchPlaylist(retries = 0, backoff = 0) {
+  if (retries == 0) failureNotified = false
   let playlist
   try {
     playlist = JSON.parse(await util.execute('curl -s -u :password http://127.0.0.1:8080/requests/playlist.json'))
+    if (failureNotified) {
+      log(`successfully fetched playlist after ${retries} retries`)
+      failureNotified = false
+    }
   } catch(err) {
+    if (retries == 0) {
+      log('failed to get playlist, retrying')
+      failureNotified = true
+    }
     if (retries < maxRetries) {
-      await util.delay(backoff*1000)
+      await util.delay(backoff*100)
       return fetchPlaylist(retries+1,backoff+1)
     } else {
       console.error(`failed to fetch playlist in a decent amount of time, sheesh`)
