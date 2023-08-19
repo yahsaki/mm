@@ -73,7 +73,7 @@ let intervalId = setInterval(async () => {
   await checkCurrentSong()
   updateView()
 })()
-
+let data
 function updateView() {
   // drawing a serious blank on a cleaner way to take the first 5 elements of an array
   const arr = []
@@ -120,7 +120,7 @@ async function checkCurrentSong() {
       tags: [],
     }
     // check for tags
-    const data = await fetchAlbumData()
+    data = await fetchAlbumData()
     console.log('track,', data.album.track)
     _.current.tags = data.album.track[data.key].tags
   } else {
@@ -146,7 +146,7 @@ function log(text, debug = false) {
   logger.log(text)
 }
 async function removeTags(tags) {
-  const data = await fetchAlbumData()
+  data = await fetchAlbumData()
   const date = new Date()
 
   const existingTags = []
@@ -164,7 +164,6 @@ async function removeTags(tags) {
   log(`tags '${existingTags.join(', ')}' will be removed`, true)
   for (let i = 0; i < existingTags.length; i++) {
     data.album.track[data.key].history.tags.splice(0, 0, {
-      ...util.template.tagHistory,
       date: new Date().toISOString(),
       action: util.tagAction.remove,
       tag: existingTags[i],
@@ -182,7 +181,8 @@ async function removeTags(tags) {
 
 async function addTags(tags) {
   // spaces not allowed in tag names
-  const data = await fetchAlbumData()
+  data = await fetchAlbumData()
+  fs.writeFileSync(path.join(__dirname, 'unmodified.json'), JSON.stringify(data, ' ', 2), {encoding:'utf-8'})
   const date = new Date()
 
   const uniqueTags = []
@@ -194,10 +194,10 @@ async function addTags(tags) {
     log('nothing to modify');return;
   }
   log(`tags '${uniqueTags.join(', ')}' will be added`, true)
+  log(`DEBUG: existing history tags in the data '${data.album.track[data.key].history.tags.join(',')}'`, true)
   data.album.track[data.key].tags = data.album.track[data.key].tags.concat(uniqueTags)
   for (let i = 0; i < uniqueTags.length; i++) {
     data.album.track[data.key].history.tags.splice(0, 0, {
-      ...util.template.tagHistory,
       date: date.toISOString(),
       action: util.tagAction.add,
       tag: uniqueTags[i],
@@ -224,6 +224,7 @@ async function fetchAlbumData() {
   const fp = decodeURIComponent(track.uri.split('file:///')[1])
   const fpObj = path.parse(fp)
   const dataFilePath = path.join(fpObj.dir, util.dataFileName)
+  log(`fetching data from path '${dataFilePath}'`, true)
   if (fs.existsSync(dataFilePath)) {
     
     const data = {
@@ -235,11 +236,15 @@ async function fetchAlbumData() {
     const date = new Date()
     if (!data.album.track[data.key]) {
       data.album.track[data.key] = {
-        ...util.template.track,
+        title: status.information.category.meta.title,
+        trackNumber: status.information.category.meta.track_number,
         createDate: date.toISOString(),
         updateDate: date.toISOString(),
-        trackNumber: status.information.category.meta.track_number,
-        title: status.information.category.meta.title,
+        tags: [],
+        history: {
+          tags: [],
+          rating: [],
+        },
       }
     }
     return data
@@ -248,24 +253,30 @@ async function fetchAlbumData() {
   // build data
   //const tracks = await util.getTracks(fpObj.dir)
   const date = new Date()
-  const data = {
+  const obj = {
     album: {
-      ...util.template.base,
+      version: util.template.base.version,
       createDate: date.toISOString(),
       updateDate: date.toISOString(),
+      track: {},
     },
     currentTrack: status.information.category.meta,
     key: `${status.information.category.meta.track_number}:${status.information.category.meta.title}`,
     dataFilePath,
   }
-  data.album.track[data.key] = {
-    ...util.template.track,
+  fs.writeFileSync(path.join(__dirname, 'data_just_initialized.json'), JSON.stringify(util.template.base, ' ', 2), {encoding:'utf-8'})
+  obj.album.track[obj.key] = {
+    title: status.information.category.meta.title,
+    trackNumber: status.information.category.meta.track_number,
     createDate: date.toISOString(),
     updateDate: date.toISOString(),
-    trackNumber: status.information.category.meta.track_number,
-    title: status.information.category.meta.title,
+    tags: [],
+    history: {
+      tags: [],
+      rating: [],
+    },
   }
-  return data
+  return obj
 }
 
 const maxRetries = 500
