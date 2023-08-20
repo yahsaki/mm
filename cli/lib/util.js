@@ -59,7 +59,7 @@ module.exports = {
           const label = itemArr[1]
           if (!response[label]) {
             console.log(`label '${label}' created`)
-            response[label] = { logo: null, banner: null }
+            response[label] = { logo: null, banner: null, album: {} }
           }
           return
         }
@@ -80,9 +80,9 @@ module.exports = {
             }
           } else {
             const album = itemArr[2]
-            if (!response[label][album]) {
+            if (!response[label].album[album]) {
               console.log(`album '${album}' created`)
-              response[label][album] = { cover: null, track: {} }
+              response[label].album[album] = { cover: null, track: {} }
             }
           }
           return
@@ -98,11 +98,11 @@ module.exports = {
         // order isnt promised, recheck if label/album initialized
         if (!response[label]) {
           console.log(`label '${label}' created`)
-          response[label] = { logo: null, banner: null }
+          response[label] = { logo: null, banner: null, album: {} }
         }
-        if (!response[label][album]) {
+        if (!response[label].album[album]) {
           console.log(`album '${album}' created`)
-          response[label][album] = { cover: null, track: {} }
+          response[label].album[album] = { cover: null, track: {} }
         }
 
         if (!itemObj.ext.length && itemObj.name !== '.mm_data') {
@@ -115,7 +115,7 @@ module.exports = {
         // no folders beyond this point
         if (trackTypes.find(x => x === itemObj.ext.toLowerCase())) {
           // I swear I intended for more to be here? might as well be an array
-          response[label][album].track[itemObj.name] = {path:item.path}
+          response[label].album[album].track[itemObj.name] = {path:item.path}
           // quick check if its one of those files I fucked up and renamed. this
           // is a temp check, not even close to accurate
           if ('01'.includes(itemObj.name[0]) && '123456789'.includes(itemObj.name[1])) {
@@ -123,7 +123,7 @@ module.exports = {
           }
         }
         if (imageTypes.find(x => x === itemObj.ext.toLowerCase()) && itemObj.name === 'cover') {
-          response[label][album].cover = item.path
+          response[label].album[album].cover = item.path
         }
       })
       .on('end', () => { resolve({warnings,data:response}) })

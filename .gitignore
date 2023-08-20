@@ -2,3 +2,4 @@ node_modules
 _manifest
 package-lock.json
 logs
+playlist.xspf

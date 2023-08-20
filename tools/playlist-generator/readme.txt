@@ -1,0 +1,1 @@
+basically geared toward single level(no nesting) bandcamp albums with covers, so dont try any other formats yet
