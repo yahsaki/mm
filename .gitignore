@@ -3,3 +3,5 @@ _manifest
 package-lock.json
 logs
 playlist.xspf
+example
+cli/data
