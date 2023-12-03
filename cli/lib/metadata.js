@@ -1,5 +1,6 @@
 const spawn = require('child_process').spawn
 
+// TODO: support bpm
 module.exports = {
   get: (audioFilePath) => {
     const promise = new Promise((resolve, reject) => {

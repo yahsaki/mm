@@ -5,6 +5,21 @@ const metadata = require('./metadata')
 //const data = require('./data')
 
 module.exports = {
+  dataFileName: '.m3d', // music metadata manager data
+  template: {
+    base: {
+      version: '0.0.0',
+      createDate: null,
+      updateDate: null,
+      track: {},
+    },
+    track: {
+      updateDate: null,
+      number: null,
+      title: null,
+      tags: [],
+    }
+  },
   delay: ms =>
     new Promise(resolve =>
       setTimeout(() => resolve(), ms)),
@@ -36,6 +51,70 @@ module.exports = {
     this.fs.writeJson(audioFilePath, data.audioFiles)
     emitter.emit('log', `files saved to '${audioFilePath}'`)
     return data
+  },
+  fetchDataFile: function(track, emitter) {
+    const pathObj = path.parse(track.path)
+    let file = this.fs.readJson(path.join(pathObj.dir, this.dataFileName))
+    if (!file) {
+      emitter.emit('log', `no data file for track '${track.title}'`)
+      return
+    }
+    return file.track[track.title]
+  },
+  saveTags: function(tags, track, emitter) {
+    const date = new Date()
+    // at this point we assume everything we require is present
+
+    // get current data file
+    const pathObj = path.parse(track.path)
+    // data files should be stored in the same dir as the audio files
+    let file = this.fs.readJson(path.join(pathObj.dir, this.dataFileName))
+    if (file) {
+      file.updateDate = date.toISOString()
+      // update file
+      if (!file.track[track.title]) {
+        file.track[track.title] = {
+          title: track.title,
+          updateDate: date.toISOString(),
+          number: track.track,
+          tags: tags // already lowered
+        }
+        emitter.emit('log', 'track added')
+        this.fs.writeJson(path.join(pathObj.dir, this.dataFileName), file)
+        return file.track[track.title].tags
+      }
+
+      // check for existing
+      for (let tag in tags) {
+        if (!file.track[track.title].tags.find(x => x === tags[tag])) {
+          file.track[track.title].tags.push(tags[tag])
+        } else {
+          // if rating, replace rating if exists and log history,
+          // otherwise nothing? not exactly but whatever
+        }
+      }
+      emitter.emit('log', 'track updated')
+      this.fs.writeJson(path.join(pathObj.dir, this.dataFileName), file)
+      return file.track[track.title].tags
+    }
+
+    // create file
+    file = this.template.base
+    file.createDate = date.toISOString()
+    file.updateDate = date.toISOString()
+    file.track[track.title] = {
+      title: track.title,
+      updateDate: date.toISOString(),
+      number: track.track,
+      tags: tags // already lowered
+    }
+    if (track.album) { file.album = track.album }
+    if (track.albumArtist) {
+      file.track[track.title].albumArtist = track.albumArtist
+    }
+    emitter.emit('log', 'track created')
+    this.fs.writeJson(path.join(pathObj.dir, this.dataFileName), file)
+    return file.track[track.title].tags
   },
   refresh: function() {
     // rescan files n shit
