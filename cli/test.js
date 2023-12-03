@@ -26,11 +26,11 @@ emitter.on('on_song_end', (data) => {
 })
 
 ;(async () => {
-  //await scanDir()
+  await scanDir()
   //await getMetadata()
   //await startAndStopSong()
   //await startStopAndResumeSong()
-  await initialize()
+  //await initialize()
 })()
 
 async function initialize() {
@@ -79,5 +79,6 @@ async function scanDir() {
   const pathObj = path.parse(__dirname)
   const musicDir = path.join(pathObj.dir, 'example')
   const data = await dir.scan(musicDir)
-  console.log(`found ${data.length} audio files(will support otehr shit one day)`)
+  console.log(`found ${data.files.length} audio files`)
+  console.log('tags', data.tags)
 }

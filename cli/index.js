@@ -7,6 +7,14 @@ const emitter = new MyEmitter()
 const readline = require('node:readline')
 readline.emitKeypressEvents(process.stdin)
 if (process.stdin.isTTY) { process.stdin.setRawMode(true) }
+
+/*
+231203:
+  tags.json and tags in memory will be out of date as soon as one is added/removed,
+  and we have no recourse except to rescan everything. im a bit too lazy to try and
+  keep it in sync, or more likely I dont want to add such dirty code to this pile of
+  shit as is
+*/
 const _ = {
   mode: null,
   subMode: null,
@@ -44,9 +52,6 @@ emitter.on('on_song_play', (data) => {
   }
 })
 emitter.on('on_song_end', (data) => {
-  if (_.current?.state !== _.info.songState.paused) {
-
-  }
   updateView()
 })
 
@@ -80,7 +85,7 @@ process.stdin.on('keypress', (str, key) => {
         } break
         default: {
           if (key.name === 't') {
-            log(`switching from '${_.subMode}' to tag mode`)
+            log(`start with (d)elete to remove tags`)
             _.subMode = _.info.subMode.play.tag
           }
           if (key.name === 'space') { // pause
@@ -103,12 +108,13 @@ process.stdin.on('keypress', (str, key) => {
       // menu: refresh, random,
       if (key.name === 'return') {
         log('time to play something!')
-        const randomSong = _.data.audioFiles[Math.floor(Math.random() * _.data.audioFiles.length)]
+        const randomSong = _.data.files[Math.floor(Math.random() * _.data.files.length)]
         _.current = {...randomSong}
         _.mode = _.info.mode.play
         _.atTime = null
         const trackData = util.fetchDataFile(_.current, emitter)
         if (trackData) { _.current.tags = trackData.tags }
+        else { _.current.tags = [] }
         audio.play(_.current.path, emitter)
       }
     } break
@@ -147,12 +153,14 @@ function updateView() {
       view += `artist: ${_.current.artist}\n`
       if (_.current.tags) {
         view += `tags: ${_.current.tags.join(', ')}\n`
+      } else {
+        view += `tags: N/A\n`
       }
       if (_.atTime) {
         view += `${_.atTime} - ${_.current.duration}\n`
       }
       if (_.subMode === _.info.subMode.play.tag) {
-        view += `add tag> ${input.join('')}\n`
+        view += `tag> ${input.join('')}\n`
       }
     } break
     default: {
@@ -177,7 +185,15 @@ function saveTags() {
     log(`no tags to save(out of ${tags.length})`)
     return
   }
-  util.saveTags(payload, _.current, emitter)
+  if (tags[0] === 'd' || tags[0] === 'delete') {
+    payload.splice(0, 1)
+    log(`attempting to delete tags ${payload.join(', ')}`)
+    _.current.tags = util.deleteTags(payload, _.current, emitter)
+    input.length = 0
+  } else {
+    _.current.tags = util.saveTags(payload, _.current, emitter)
+    input.length = 0
+  }
 }
 function print(value) {
   console.clear()

@@ -6,6 +6,7 @@ const metadata = require('./metadata')
 
 module.exports = {
   dataFileName: '.m3d', // music metadata manager data
+  delimiter: '¦¦',
   template: {
     base: {
       version: '0.0.0',
@@ -24,32 +25,35 @@ module.exports = {
     new Promise(resolve =>
       setTimeout(() => resolve(), ms)),
   initialize: async function(musicDir, emitter) {
-    const data = {}
+    let data = {}
     const pathObj = path.parse(__dirname)
     const dataDir = path.join(pathObj.dir, 'data')
-    const audioFilePath = path.join(dataDir, 'files.json')
+    const filePath = path.join(dataDir, 'files.json')
+    const tagPath = path.join(dataDir, 'tags.json')
     this.fs.mkdir(dataDir)
     // first check if thang exists
-    data.audioFiles = this.fs.readJson(audioFilePath)
-    if (data.audioFiles) {
-      emitter.emit('log', 'files json already genereated')
+    data.files = this.fs.readJson(filePath)
+    data.tags = this.fs.readJson(tagPath)
+    if (data.files && data.tags) {
+      emitter.emit('log', 'data files already genereated')
       return data
     }
 
     emitter.emit('log', `scanning for audio files`)
-    data.audioFiles = await directory.scan(musicDir)
-    emitter.emit('log', `${data.audioFiles.length} audio files found`)
-    for (let i = 0; i < data.audioFiles.length; i++) {
-      const file = data.audioFiles[i]
+    data = await directory.scan(musicDir)
+    emitter.emit('log', `${data.files.length} audio files found`)
+    for (let i = 0; i < data.files.length; i++) {
+      const file = data.files[i]
       const audioFileData = await metadata.get(file.path)
-      data.audioFiles[i] = {
+      data.files[i] = {
         ...file,
         ...audioFileData,
       }
     }
     emitter.emit('log', `metadata fetched`)
-    this.fs.writeJson(audioFilePath, data.audioFiles)
-    emitter.emit('log', `files saved to '${audioFilePath}'`)
+    this.fs.writeJson(filePath, data.files)
+    this.fs.writeJson(tagPath, data.tags)
+    emitter.emit('log', `data saved to '${dataDir}'`)
     return data
   },
   fetchDataFile: function(track, emitter) {
@@ -60,6 +64,33 @@ module.exports = {
       return
     }
     return file.track[track.title]
+  },
+  deleteTags: function(tags, track, emitter) {
+    const date = new Date()
+    const pathObj = path.parse(track.path)
+    let file = this.fs.readJson(path.join(pathObj.dir, this.dataFileName))
+    // you can run the delete command even though no tags exist for file/track
+    if (!file) {
+      emitter.emit('log', `deleting tags '${tags}' even though file '${track.path}' does not exist`);return
+    }
+    if (!file.track[track.title]) {
+      emitter.emit('log', `file '${track.path}' exists but track '${track.title}' not found`);return
+    }
+    const removedTags = []
+    for (let tag in tags) {
+      const index = file.track[track.title].tags.findIndex(x => x === tags[tag])
+      if (index > -1) {
+        file.track[track.title].tags.splice(index, 1)
+        removedTags.push(tags[tag])
+      }
+    }
+    if (removedTags.length) {
+      this.fs.writeJson(path.join(pathObj.dir, this.dataFileName), file)
+      emitter.emit('log', `tags removed: ${removedTags.join(', ')}`)
+    } else {
+      emitter.emit('log', 'no tags removed')
+    }
+    return file.track[track.title].tags
   },
   saveTags: function(tags, track, emitter) {
     const date = new Date()
@@ -76,9 +107,9 @@ module.exports = {
         file.track[track.title] = {
           title: track.title,
           updateDate: date.toISOString(),
-          number: track.track,
           tags: tags // already lowered
         }
+        if (track.track) { file.track[track.title].number = track.track }
         emitter.emit('log', 'track added')
         this.fs.writeJson(path.join(pathObj.dir, this.dataFileName), file)
         return file.track[track.title].tags
@@ -105,13 +136,13 @@ module.exports = {
     file.track[track.title] = {
       title: track.title,
       updateDate: date.toISOString(),
-      number: track.track,
       tags: tags // already lowered
     }
     if (track.album) { file.album = track.album }
     if (track.albumArtist) {
       file.track[track.title].albumArtist = track.albumArtist
     }
+    if (track.track) { file.track[track.title].number = track.track }
     emitter.emit('log', 'track created')
     this.fs.writeJson(path.join(pathObj.dir, this.dataFileName), file)
     return file.track[track.title].tags
