@@ -1,4 +1,4 @@
-const util = require('./lib/util')
+const lib = require('./lib')
 const audio = require('./lib/audio')
 const path = require('path')
 const EventEmitter = require('node:events')
@@ -19,14 +19,13 @@ const _ = {
   mode: null,
   subMode: null,
   current: null,
-  log: null,
   info: {
     mode: {
       play: 'play',
     },
     subMode: {
       play: {
-        tag: 'tag',
+        input: 'input',
         navigate: 'navigate',
       },
     },
@@ -34,7 +33,14 @@ const _ = {
       playing: 'playing',
       paused: 'paused',
     }
-  }
+  },
+  // updateView() gets called before we hit disk making any code that depends
+  // on it fail. lots of fixes to this, but here we go for now
+  state: {},
+  settings:{logSize:5},
+  // lots o data to hit
+  // TODO: dont let commands like play work until its finished
+  initializationComplete: false,
 }
 
 const logs = []
@@ -42,6 +48,8 @@ emitter.on('log', (data) => {
   log(data)
   updateView()
 })
+emitter.on('state_initialize', data => { _.state = data })
+emitter.on('playlist_initialize', data => { _.state.playlist = data })
 emitter.on('on_song_play', (data) => {
   const arr = data.split(' ')
   if (arr[1] && arr[1].length === 11) {
@@ -71,22 +79,57 @@ process.stdin.on('keypress', (str, key) => {
         log('not playing music anymore')
       }
       switch (_.subMode) {
-        case _.info.subMode.play.tag: {
+        case _.info.subMode.play.input: {
           inputMode = true
           if (key.name === 'escape') {
-            log(`exiting tag mode`)
+            log(`exiting input mode`)
             input.length = 0
             _.subMode = null
           }
           if (key.name === 'return') {
-            log(`creating tag(s) '${input.join('')}'`)
-            saveTags()
+            log(`doing something with this input '${input.join('')}'`)
+            onSubmit()
           }
         } break
         default: {
-          if (key.name === 't') {
-            log(`start with (d)elete to remove tags`)
-            _.subMode = _.info.subMode.play.tag
+          // need to learn what the arrow names are
+          if (key.name === 'n') {
+            const tempIndex = _.state.playlist.index + 1
+            const track = lib.temp.getPlaylistTrack(
+              _.state.playlist.playlistPath,
+              tempIndex,
+              emitter
+            )
+            if (!track) {
+              log(`no track at index ${tempIndex}.(resetting everything now)`)
+              clear();return
+            }
+
+            _.state.playlist.index = tempIndex
+            audio.stop()
+            _.current = {...track,tags:[],comments:[]}
+            playCurrent()
+          }
+          if (key.name === 'p') {
+            const tempIndex = _.state.playlist.index - 1
+            const track = lib.temp.getPlaylistTrack(
+              _.state.playlist.playlistPath,
+              tempIndex,
+              emitter
+            )
+            if (!track) {
+              log(`no track at index ${tempIndex}.(resetting everything now)`)
+              clear();return
+            }
+
+            _.state.playlist.index = tempIndex
+            audio.stop()
+            _.current = {...track,tags:[],comments:[]}
+            playCurrent()
+          }
+          if (key.name === 'i') {
+            log(`(((d)elete)t)ag, (((d)elete)c)omment, (((d)elete)r)ating`)
+            _.subMode = _.info.subMode.play.input
           }
           if (key.name === 'space') { // pause
             if (audio.playing()) {
@@ -105,14 +148,30 @@ process.stdin.on('keypress', (str, key) => {
       }
     } break
     default: {
-      // menu: refresh, random,
-      if (key.name === 'return') {
+      if (key.name === 'return' || key.name === 'space' || key.name === '0') {
+        // basically any input goes here for now
+        if (!_.state || !_.state.playlist) {
+          throw Error(`state not in correct format`)
+        }
+
+        const track = lib.temp.getPlaylistTrack(
+          _.state.playlist.playlistPath,
+          _.state.playlist.index,
+          emitter
+        )
+        if (track) {
+          clear()
+          _.current = {...track,tags:[],comments:[]}
+          playCurrent()
+        }
+      }
+      if (false) {
         log('time to play something!')
         const randomSong = _.data.files[Math.floor(Math.random() * _.data.files.length)]
         _.current = {...randomSong}
         _.mode = _.info.mode.play
         _.atTime = null
-        const trackData = util.fetchDataFile(_.current, emitter)
+        const trackData = lib.fetchDataFile(_.current, emitter)
         if (trackData) { _.current.tags = trackData.tags }
         else { _.current.tags = [] }
         audio.play(_.current.path, emitter)
@@ -135,7 +194,7 @@ process.stdin.on('keypress', (str, key) => {
 function updateView() {
   const arr = []
   // only take first 5 elements of log array
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < _.settings.logSize; i++) {
     if (logs[i]) { arr.push(logs[i]) }
   }
   const logText = `\n----------------------\nlogs: \n${arr.join('\n')}`
@@ -159,12 +218,12 @@ function updateView() {
       if (_.atTime) {
         view += `${_.atTime} - ${_.current.duration}\n`
       }
-      if (_.subMode === _.info.subMode.play.tag) {
-        view += `tag> ${input.join('')}\n`
+      if (_.subMode === _.info.subMode.play.input) {
+        view += `input> ${input.join('')}\n`
       }
     } break
     default: {
-      view += `${_.mode} iirashaimase. press enter to play a random song`
+      view += `${_.mode} iirashaimase. press enter,space or something to play playlist`
     } break
   }
   view += logText
@@ -172,8 +231,51 @@ function updateView() {
   print(view)
 }
 
+function onSubmit() {
+  if (!input.length) { log(`no input provided`);return }
+
+  // this only applies to play mode
+  const request = input.join('').split(' ')
+  switch (request[0]) {
+    case 't':
+    case 'dt': {
+      saveTags()
+    } break
+    case 'c':
+    case 'dc': {
+      saveComment()
+    } break
+    case 'r':
+    case 'dr': {
+      saveRating()
+    } break
+    default: {
+      log(`command '${request[0]}' unknown. accepted commands: [d]t, [d]c, [d]r`)
+    } break
+  }
+}
+
+function playCurrent() {
+  // dont really want to call clear() since subModes and others can be removed
+  // when we dont want that
+  audio.stop()
+  const trackData = lib.fetchDataFile(_.current, emitter)
+  if (trackData) {
+    _.current.tags = trackData.tags
+    _.current.comments = trackData.comments
+    //_.current.ratings = trackData.ratings
+  }
+  _.mode = _.info.mode.play
+  audio.play(_.current.path, emitter)
+}
+function saveRating() {
+  log('saving ratings unsupported')
+}
+function saveComment() {
+  log('saving comments unsupported')
+}
 function saveTags() {
-  if (!input.length) { log(`write some chars`);return }
+  //if (!input.length) { log(`write some chars`);return }
   //if (input.find(x => x === ' ')) { log(`spaces not allowed`);return }
   const payload = []
   const tags = input.join('').split(' ')
@@ -185,15 +287,15 @@ function saveTags() {
     log(`no tags to save(out of ${tags.length})`)
     return
   }
-  if (tags[0] === 'd' || tags[0] === 'delete') {
-    payload.splice(0, 1)
+  // leaving splicing up to the nested function in case of multiple args
+  const command = payload.splice(0, 1)[0]
+  if (command === 'dt') {
     log(`attempting to delete tags ${payload.join(', ')}`)
-    _.current.tags = util.deleteTags(payload, _.current, emitter)
-    input.length = 0
+    _.current.tags = lib.deleteTags(payload, _.current, emitter)
   } else {
-    _.current.tags = util.saveTags(payload, _.current, emitter)
-    input.length = 0
+    _.current.tags = lib.saveTags(payload, _.current, emitter)
   }
+  input.length = 0
 }
 function print(value) {
   console.clear()
@@ -202,6 +304,7 @@ function print(value) {
   process.stdout.write(value)
 }
 function clear() {
+  audio.stop()
   input.length = 0
   _.mode = null
   _.subMode = null
@@ -214,8 +317,8 @@ function log(text) {
 ;(async () => {
   // TODO: return all the shits on initialize, not just an array of files
   const pathObj = path.parse(__dirname)
-  const musicDir = path.join(pathObj.dir, 'example')
-  _.data = await util.initialize(musicDir, emitter)
+  const musicDir = path.join(pathObj.dir, 'example1')
+  _.data = await lib.initialize(musicDir, emitter)
   updateView()
 })()
 
