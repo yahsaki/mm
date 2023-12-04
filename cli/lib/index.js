@@ -10,7 +10,7 @@ function initializeDataFile(track, emitter) {
   // track is a dependency, meaning we cant create data files without a track initially.
   // we might want to do that someday
   const date = new Date()
-  const file = itself.template.base
+  const file = util.template.base
   file.createDate = date.toISOString()
   file.updateDate = date.toISOString()
   initializeDataFileTrack(file, track, emitter)
@@ -20,7 +20,7 @@ function initializeDataFileTrack(file, track, emitter) {
   // if the track doesnt exist but the file does
   const date = new Date()
   file.track[track.title] = {
-    ...itself.template.track,
+    ...util.template.track,
     title: track.title,
     updateDate: date.toISOString(),
   }
@@ -221,38 +221,6 @@ module.exports = {
   },
   refresh: function() {
     // rescan files n shit
-  },
-  helpers: {
-    initialize: {
-      // unbelievable hack having to pass 'this' as 'itself' to these methods but whatever.
-      // I need to split out super logic-y functions like initialize and save<thing> from
-      // generic things like this, fs, shuffle, etc anyway
-      dataFile: function(itself, track, emitter) {
-        // track is a dependency, meaning we cant create data files without a track initially.
-        // we might want to do that someday
-        const date = new Date()
-        const file = itself.template.base
-        file.createDate = date.toISOString()
-        file.updateDate = date.toISOString()
-        itself.helpers.initialize.dataFileTrack(itself, file, track, emitter)
-        return file
-      },
-      dataFileTrack: function(itself, file, track, emitter) {
-        // if the track doesnt exist but the file does
-        const date = new Date()
-        file.track[track.title] = {
-          ...itself.template.track,
-          title: track.title,
-          updateDate: date.toISOString(),
-        }
-        if (track.album) { file.album = track.album }
-        if (track.albumArtist) {
-          file.track[track.title].albumArtist = track.albumArtist
-        }
-        if (track.track) { file.track[track.title].number = track.track }
-        return file
-      }
-    },
   },
   temp: {
     getPlaylistTrack: function(playlistFilePath, index, emitter) {

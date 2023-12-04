@@ -4,4 +4,6 @@ package-lock.json
 logs
 playlist.xspf
 example
+example1
 cli/data
+*.kate-swp

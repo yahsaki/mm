@@ -19,6 +19,7 @@ const _ = {
   mode: null,
   subMode: null,
   current: null,
+  locked: false,
   info: {
     mode: {
       play: 'play',
@@ -41,6 +42,9 @@ const _ = {
   // lots o data to hit
   // TODO: dont let commands like play work until its finished
   initializationComplete: false,
+  callback: {
+    onSongEnd: null,
+  }
 }
 
 const logs = []
@@ -56,10 +60,22 @@ emitter.on('on_song_play', (data) => {
     const atTime = arr[1]
     _.atTime = atTime
     const endTime = arr[2].substring(1, arr[2].length-1)
+
+    /*if (!_.callback.onSongEnd) {
+      _.callback.onSongEnd = () => { changeTrack({seek:1}) }
+    }*/
     updateView()
   }
 })
 emitter.on('on_song_end', (data) => {
+  if (_.mode === _.info.mode.play && _.state?.playlist) {
+    // TODO: mark track as played herez
+    changeTrack({seek:1})
+  }
+  /*if (typeof _.callback.onSongEnd === 'function') {
+    _.callback.onSongEnd()
+    _.callback.onSongEnd = null
+  }*/
   updateView()
 })
 
@@ -94,38 +110,10 @@ process.stdin.on('keypress', (str, key) => {
         default: {
           // need to learn what the arrow names are
           if (key.name === 'n') {
-            const tempIndex = _.state.playlist.index + 1
-            const track = lib.temp.getPlaylistTrack(
-              _.state.playlist.playlistPath,
-              tempIndex,
-              emitter
-            )
-            if (!track) {
-              log(`no track at index ${tempIndex}.(resetting everything now)`)
-              clear();return
-            }
-
-            _.state.playlist.index = tempIndex
-            audio.stop()
-            _.current = {...track,tags:[],comments:[]}
-            playCurrent()
+            changeTrack({seek:1,manual:true})
           }
           if (key.name === 'p') {
-            const tempIndex = _.state.playlist.index - 1
-            const track = lib.temp.getPlaylistTrack(
-              _.state.playlist.playlistPath,
-              tempIndex,
-              emitter
-            )
-            if (!track) {
-              log(`no track at index ${tempIndex}.(resetting everything now)`)
-              clear();return
-            }
-
-            _.state.playlist.index = tempIndex
-            audio.stop()
-            _.current = {...track,tags:[],comments:[]}
-            playCurrent()
+            changeTrack({seek:-1,manual:true})
           }
           if (key.name === 'i') {
             log(`(((d)elete)t)ag, (((d)elete)c)omment, (((d)elete)r)ating`)
@@ -197,12 +185,17 @@ function updateView() {
   for (let i = 0; i < _.settings.logSize; i++) {
     if (logs[i]) { arr.push(logs[i]) }
   }
-  const logText = `\n----------------------\nlogs: \n${arr.join('\n')}`
+  const logText = `\n-------------logs-------------\n${arr.join('\n')}`
 
   let view = ''
   switch(_.mode) {
     case _.info.mode.play: {
-      view += 'playing rando song'
+      if (_.state?.playlist) {
+        view += `playing ${_.state.playlist.index}`
+      } else {
+        view += 'playing rando song'
+      }
+
       if (_.current.state === _.info.songState.paused) { view += '(paused)\n'}
       else { view += '\n' }
       view += `title: ${_.current.title}\n`
@@ -255,7 +248,27 @@ function onSubmit() {
   }
 }
 
-function playCurrent() {
+function changeTrack(args) {
+  if (_.locked === true) return
+  _.locked = true
+  const seek = args.seek
+  const tempIndex = _.state.playlist.index + seek
+  const track = lib.temp.getPlaylistTrack(
+    _.state.playlist.playlistPath,
+    tempIndex,
+    emitter
+  )
+  if (!track) {
+    log(`no track at index ${tempIndex}, seeked ${seek}.(resetting everything now)`)
+    clear();return
+  }
+
+  _.state.playlist.index = tempIndex
+  audio.stop()
+  _.current = {...track,tags:[],comments:[]}
+  playCurrent(args)
+}
+function playCurrent(args) {
   // dont really want to call clear() since subModes and others can be removed
   // when we dont want that
   audio.stop()
@@ -267,6 +280,10 @@ function playCurrent() {
   }
   _.mode = _.info.mode.play
   audio.play(_.current.path, emitter)
+  if (args?.manual === true) {
+    log(`you hit the button!`)
+  }
+  setTimeout(() => { _.locked = false }, 500)
 }
 function saveRating() {
   log('saving ratings unsupported')
