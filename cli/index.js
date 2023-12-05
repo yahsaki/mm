@@ -68,9 +68,11 @@ emitter.on('on_song_play', (data) => {
   }
 })
 emitter.on('on_song_end', (data) => {
-  if (_.mode === _.info.mode.play && _.state?.playlist) {
-    // TODO: mark track as played herez
-    changeTrack({seek:1})
+  if (_.current.state !== _.info.songState.paused) {
+    if (_.mode === _.info.mode.play && _.state?.playlist) {
+      // TODO: mark track as played herez
+      changeTrack({seek:1})
+    }
   }
   /*if (typeof _.callback.onSongEnd === 'function') {
     _.callback.onSongEnd()
@@ -84,12 +86,14 @@ process.stdin.on('keypress', (str, key) => {
   let inputMode = false
   if (key.name === 'c' && key.ctrl) {
     // TODO: save current state and shit so we can resume playing where we left off
-    console.log(`mata atode`)
+    saveState()
+    console.log(`\n\nmata atode\n`)
     process.exit(0)
   }
   switch(_.mode) {
     case _.info.mode.play: {
       if (!_.subMode && key.name === 'escape') { // kill
+        saveState()
         audio.stop()
         clear()
         log('not playing music anymore')
@@ -121,8 +125,8 @@ process.stdin.on('keypress', (str, key) => {
           }
           if (key.name === 'space') { // pause
             if (audio.playing()) {
-              audio.stop()
               _.current.state = _.info.songState.paused
+              audio.stop()
             } else {
               if (!_.current) { // nothing was playing
                 return
@@ -152,17 +156,6 @@ process.stdin.on('keypress', (str, key) => {
           _.current = {...track,tags:[],comments:[]}
           playCurrent()
         }
-      }
-      if (false) {
-        log('time to play something!')
-        const randomSong = _.data.files[Math.floor(Math.random() * _.data.files.length)]
-        _.current = {...randomSong}
-        _.mode = _.info.mode.play
-        _.atTime = null
-        const trackData = lib.fetchDataFile(_.current, emitter)
-        if (trackData) { _.current.tags = trackData.tags }
-        else { _.current.tags = [] }
-        audio.play(_.current.path, emitter)
       }
     } break
   }
@@ -248,6 +241,10 @@ function onSubmit() {
   }
 }
 
+function saveState() {
+  if (_.atTime) { _.state.atTime = _.atTime }
+  lib.saveState(_.state, emitter)
+}
 function changeTrack(args) {
   if (_.locked === true) return
   _.locked = true
@@ -267,6 +264,7 @@ function changeTrack(args) {
   audio.stop()
   _.current = {...track,tags:[],comments:[]}
   playCurrent(args)
+  saveState()
 }
 function playCurrent(args) {
   // dont really want to call clear() since subModes and others can be removed
@@ -279,9 +277,10 @@ function playCurrent(args) {
     //_.current.ratings = trackData.ratings
   }
   _.mode = _.info.mode.play
-  audio.play(_.current.path, emitter)
-  if (args?.manual === true) {
-    log(`you hit the button!`)
+  if (args?.atTime) {
+    audio.resume(_.current.path, args.atTime, emitter)
+  } else {
+    audio.play(_.current.path, emitter)
   }
   setTimeout(() => { _.locked = false }, 500)
 }
@@ -335,7 +334,23 @@ function log(text) {
   // TODO: return all the shits on initialize, not just an array of files
   const pathObj = path.parse(__dirname)
   const musicDir = path.join(pathObj.dir, 'example1')
-  _.data = await lib.initialize(musicDir, emitter)
+  //_.data = await lib.initialize(musicDir, emitter)
+  await lib.initialize(musicDir, emitter)
   updateView()
+  setTimeout(() => {
+    if (_.state?.playlist && _.state?.atTime) {
+
+      const track = lib.temp.getPlaylistTrack(
+        _.state.playlist.playlistPath,
+        _.state.playlist.index,
+        emitter
+      )
+      if (track) {
+        clear()
+        _.current = {...track,tags:[],comments:[]}
+        playCurrent({atTime:_.state.atTime})
+      }
+    }
+  }, 500)
 })()
 

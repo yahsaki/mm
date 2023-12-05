@@ -33,7 +33,7 @@ function initializeDataFileTrack(file, track, emitter) {
 }
 module.exports = {
   initialize: async function(musicDir, emitter) {
-    let data = {}
+    let data = {} // not doing anything with this var atm
     const pathObj = path.parse(__dirname)
     const dataDir = path.join(pathObj.dir, 'data')
     const playlistDir = path.join(dataDir, 'playlists')
@@ -58,8 +58,8 @@ module.exports = {
       }
       util.fs.writeJson(statePath, state, true)
       emitter.emit('log', `state file created`)
-      emitter.emit('state_initialize', state)
     }
+    emitter.emit('state_initialize', state)
 
     // ==== music files
     data.files = util.fs.readJson(filePath)
@@ -67,40 +67,53 @@ module.exports = {
     if (data.files && data.tags) {
       emitter.emit('log', 'data files already genereated')
       //return data
-    }
-
-    emitter.emit('log', `scanning for audio files`)
-    data = await directory.scan(musicDir)
-    emitter.emit('log', `${data.files.length} audio files found`)
-    for (let i = 0; i < data.files.length; i++) {
-      const file = data.files[i]
-      const audioFileData = await metadata.get(file.path)
-      data.files[i] = {
-        ...file,
-        ...audioFileData,
+    } else {
+      emitter.emit('log', `scanning for audio files`)
+      data = await directory.scan(musicDir)
+      emitter.emit('log', `${data.files.length} audio files found`)
+      for (let i = 0; i < data.files.length; i++) {
+        const file = data.files[i]
+        const audioFileData = await metadata.get(file.path)
+        data.files[i] = {
+          ...file,
+          ...audioFileData,
+        }
       }
+      emitter.emit('log', `metadata fetched`)
+      util.fs.writeJson(filePath, data.files)
+      util.fs.writeJson(tagPath, data.tags)
+      emitter.emit('log', `data saved to '${dataDir}'`)
     }
-    emitter.emit('log', `metadata fetched`)
-    util.fs.writeJson(filePath, data.files)
-    util.fs.writeJson(tagPath, data.tags)
-    emitter.emit('log', `data saved to '${dataDir}'`)
 
     // ==== playlist
     // idk wtf its supposed to look like atm
     const allPlaylistPath = path.join(playlistDir, 'all.json')
     //const allPlaylist = this.shuffle(this.map(x => ({path: x.path}))
 
-    // shit mayne I could just put the indexes in here pointing to files.json.
-    // we could also go back to paths and ffmpeg data hot and live
-    const allPlaylist = util.shuffle(data.files.map(x => ({ ...x }) ))
-    util.fs.writeJson(allPlaylistPath, allPlaylist)
-    emitter.emit('playlist_initialize', {
-      index: 0,
-      playlistPath: allPlaylistPath,
-    })
-    emitter.emit('log', 'everything playlist generated')
+    let allPlaylist = util.fs.readJson(allPlaylistPath)
+    if (!allPlaylist) {
+      // shit mayne I could just put the indexes in here pointing to files.json.
+      // we could also go back to paths and ffmpeg data hot and live
+      allPlaylist = util.shuffle(data.files.map(x => ({ ...x }) ))
+      util.fs.writeJson(allPlaylistPath, allPlaylist)
+      emitter.emit('playlist_initialize', {
+        index: 0,
+        playlistPath: allPlaylistPath,
+      })
+      emitter.emit('log', 'everything playlist generated')
+    } else {
+
+    }
 
     return data
+  },
+  saveState: function(state, emitter) {
+    const pathObj = path.parse(__dirname)
+    const dataDir = path.join(pathObj.dir, 'data')
+    const statePath = path.join(dataDir, 'state.json')
+
+    util.fs.writeJson(statePath, state, true)
+    emitter.emit('log', 'state saved')
   },
   fetchDataFile: function(track, emitter) {
     const pathObj = path.parse(track.path)
