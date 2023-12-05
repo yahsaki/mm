@@ -11,7 +11,7 @@ module.exports = {
       klaw(dirName)
         .on('data', item => {
           const fileObj = path.parse(item.path)
-          console.log(fileObj)
+          //console.log(fileObj)
 
           if (fileObj.name === util.dataFileName) {
             const file = util.fs.readJson(item.path)

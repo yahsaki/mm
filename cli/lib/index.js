@@ -113,13 +113,13 @@ module.exports = {
     const statePath = path.join(dataDir, 'state.json')
 
     util.fs.writeJson(statePath, state, true)
-    emitter.emit('log', 'state saved')
+    //emitter.emit('log', 'state saved')
   },
   fetchDataFile: function(track, emitter) {
     const pathObj = path.parse(track.path)
     let file = util.fs.readJson(path.join(pathObj.dir, util.dataFileName))
     if (!file) {
-      emitter.emit('log', `no data file for track '${track.title}'`)
+      //emitter.emit('log', `no data file for track '${track.title}'`)
       return
     }
     return file.track[track.title]

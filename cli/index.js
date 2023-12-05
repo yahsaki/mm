@@ -38,7 +38,7 @@ const _ = {
   // updateView() gets called before we hit disk making any code that depends
   // on it fail. lots of fixes to this, but here we go for now
   state: {},
-  settings:{logSize:5},
+  settings:{logSize:2},
   // lots o data to hit
   // TODO: dont let commands like play work until its finished
   initializationComplete: false,
@@ -133,7 +133,7 @@ process.stdin.on('keypress', (str, key) => {
               }
               audio.resume(_.current.path, _.atTime, emitter)
               _.current.state = _.info.songState.playing
-              log('resuming song@!')
+              //log('resuming song@!')
             }
           }
         } break
@@ -191,6 +191,11 @@ function updateView() {
 
       if (_.current.state === _.info.songState.paused) { view += '(paused)\n'}
       else { view += '\n' }
+      if (_.current.path.includes('!Bandcamp')) {
+        const label = _.current.path.split('!Bandcamp')[1].split('/')[1]
+        //log(`track label: ${label}`)
+        view += `label: ${label}\n`
+      }
       view += `title: ${_.current.title}\n`
       if (_.current.album) {
         view += `album: ${_.current.album}\n`
@@ -212,7 +217,11 @@ function updateView() {
       view += `${_.mode} iirashaimase. press enter,space or something to play playlist`
     } break
   }
-  view += logText
+
+  // NOTE: 231205: ehhhhhh im removing logs from the view for now. not doing anything
+  // major for a while since its working as desired. not even tagging yet, just want
+  // to enjoy the logical randomness for the time being
+  //view += logText
 
   print(view)
 }
@@ -282,6 +291,7 @@ function playCurrent(args) {
   } else {
     audio.play(_.current.path, emitter)
   }
+  //log(`playing track '${_.current.path}'`)
   setTimeout(() => { _.locked = false }, 500)
 }
 function saveRating() {
@@ -331,9 +341,9 @@ function log(text) {
   logs.splice(0, 0, text)
 }
 ;(async () => {
-  // TODO: return all the shits on initialize, not just an array of files
-  const pathObj = path.parse(__dirname)
-  const musicDir = path.join(pathObj.dir, 'example1')
+  //const pathObj = path.parse(__dirname)
+  //const musicDir = path.join(pathObj.dir, 'example1')
+  const musicDir = `/home/yahsaki/Music` // yeah I know....
   //_.data = await lib.initialize(musicDir, emitter)
   await lib.initialize(musicDir, emitter)
   updateView()
