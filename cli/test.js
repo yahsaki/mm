@@ -26,12 +26,19 @@ emitter.on('on_song_end', (data) => {
 })
 
 ;(async () => {
-  await scanDir()
+  //await scanDir()
   //await getMetadata()
   //await startAndStopSong()
   //await startStopAndResumeSong()
   //await initialize()
+  chunkPieceOfRandomPlaylist()
 })()
+
+function chunkPieceOfRandomPlaylist() {
+  // i want to see the first 200 songs ive listened to so far
+  // without opening that disaster of a file directly. pull that
+  // shit out and check it isolated
+}
 
 async function initialize() {
   const pathObj = path.parse(__dirname)

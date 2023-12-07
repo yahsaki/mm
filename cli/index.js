@@ -244,6 +244,9 @@ function onSubmit() {
     case 'dr': {
       saveRating()
     } break
+    case 'go': {
+      gotoTrack()
+    } break
     default: {
       log(`command '${request[0]}' unknown. accepted commands: [d]t, [d]c, [d]r`)
     } break
@@ -257,8 +260,14 @@ function saveState() {
 function changeTrack(args) {
   if (_.locked === true) return
   _.locked = true
+  let tempIndex
   const seek = args.seek
-  const tempIndex = _.state.playlist.index + seek
+  const goto = args.goto
+  if (!isNaN(seek)) {
+    tempIndex = _.state.playlist.index + seek
+  } else if (!isNaN(goto)) {
+    tempIndex = goto
+  }
   const track = lib.temp.getPlaylistTrack(
     _.state.playlist.playlistPath,
     tempIndex,
@@ -274,6 +283,8 @@ function changeTrack(args) {
   _.current = {...track,tags:[],comments:[]}
   playCurrent(args)
   saveState()
+  // i would like to believe that clearing input wouldnt break anything
+  input.length = 0
 }
 function playCurrent(args) {
   // dont really want to call clear() since subModes and others can be removed
@@ -293,6 +304,17 @@ function playCurrent(args) {
   }
   //log(`playing track '${_.current.path}'`)
   setTimeout(() => { _.locked = false }, 500)
+}
+function gotoTrack() {
+  let index = input.join('').split(' ')[1]
+  if (!index) {
+    log(`seek track input ${index} invalid`);return
+  }
+  index = parseInt(index)
+  if (isNaN(index)) {
+    log(`seek track input ${index} is not a number`);return
+  }
+  changeTrack({goto:index})
 }
 function saveRating() {
   log('saving ratings unsupported')
